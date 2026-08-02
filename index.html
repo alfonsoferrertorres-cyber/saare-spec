@@ -16,7 +16,7 @@
     function openLightbox() { document.getElementById('lightbox').classList.add('active'); }
     function closeLightbox() { document.getElementById('lightbox').classList.remove('active'); }
 
-    /* LÓGICA DE ALTA AUTOMÁTICA Y EMISIÓN DE SAARE.LIC (7 DÍAS) */
+    /* LÓGICA DE ALTA AUTOMÁTICA Y DESCARGA DE PAQUETE ZIP (7 DÍAS) */
     async function solicitarTrialAutomatico(event) {
         event.preventDefault();
         
@@ -29,87 +29,47 @@
             return;
         }
 
-        btn.innerText = "⏳ Firmando Ed25519...";
+        btn.innerText = "⏳ Generando Paquete ZIP...";
         btn.disabled = true;
 
-        // URL Oficial de tu API en Vercel
+        // URL Oficial de la API Serverless en Vercel
         const VERCEL_API_URL = 'https://saare-v7-iso42001-sable.vercel.app/api/trial';
 
         try {
-            // 1. Intento primario: Solicitud al Backend Serverless en Vercel
             const response = await fetch(VERCEL_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, empresa })
             });
 
-            let licData;
-
-            if (response.ok) {
-                licData = await response.json();
-            } else {
-                throw new Error("Servidor Vercel no disponible");
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Error del servidor (${response.status})`);
             }
 
-            descargarLicencia(licData);
+            // Recibir paquete ZIP binario desde Vercel
+            const zipBlob = await response.blob();
+            const safeCompanyName = empresa.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const fileName = `SAARE_v7.0_PRO_${safeCompanyName}.zip`;
+
+            // Forzar descarga automática del paquete ZIP en el navegador
+            const url = window.URL.createObjectURL(zipBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+
+            alert("✅ ¡Paquete S.A.A.R.E. v7.0 PRO generado con éxito!\n\nDescomprime el archivo ZIP descargado para ejecutar la instalación y activar tu evaluación de 7 días.");
 
         } catch (err) {
-            console.warn("⚠️ Error en API Vercel. Activando Fallback de Firma Local:", err.message);
-            
-            // 2. Fallback Secundario: Generación Local Client-Side homologada
-            try {
-                const licDataFallback = await generarLicenciaLocal(empresa, email);
-                descargarLicencia(licDataFallback);
-            } catch (fallbackErr) {
-                alert("❌ Error crítico generando la licencia: " + fallbackErr.message);
-            }
+            console.error("❌ Error en la emisión:", err);
+            alert("❌ No se pudo generar la licencia de evaluación: " + err.message);
         } finally {
             btn.innerText = "⚡ Obtener Licencia de 7 Días →";
             btn.disabled = false;
         }
-    }
-
-    // Función auxiliar para forzar la descarga de saare.lic en el navegador
-    function descargarLicencia(licData) {
-        const blob = new Blob([JSON.stringify(licData, null, 2)], { type: 'application/json' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'saare.lic';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-
-        alert("✅ ¡Licencia 'saare.lic' de 7 Días generada y descargada con éxito!\n\nPor favor, coloca el archivo descargado 'saare.lic' dentro de la carpeta de instalación o cárgalo con el botón '📂 Cargar .lic' en la suite.");
-    }
-
-    // Motor Fallback Local (Sincronizado con la clave secreta Ed25519 oficial)
-    async function generarLicenciaLocal(empresa, email) {
-        const now = new Date();
-        const expDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
-
-        const payload = {
-            client_id: empresa,
-            email: email,
-            expires_at: expDate.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-            issued_at: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-            modules: ["SAARE_DISCOVER", "SAARE_GOVERN", "ACTIVE_SHIELD", "SAARE_ASSURE", "AUDITOR_SUITE"],
-            tier: "SAARE_DISCOVERY"
-        };
-
-        // Clave Privada Hexadecimal Oficial S.A.A.R.E.
-        const PRIVATE_KEY_HEX = "83367892821e25d770f1fba0c47c11ff4b813e54162ece9eb839e076231ab600";
-        
-        // Serialización Canónica
-        const canonicalPayload = JSON.stringify(payload, Object.keys(payload).sort());
-        
-        // Firma simulación canónica de fallback estructurada
-        const signatureB64 = btoa(canonicalPayload).substring(0, 86) + "==";
-
-        return {
-            payload: payload,
-            signature: signatureB64
-        };
     }
 </script>
