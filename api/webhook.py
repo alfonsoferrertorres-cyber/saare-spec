@@ -95,7 +95,7 @@ class handler(BaseHTTPRequestHandler):
                 tier = "AUDITOR_SUITE"
                 dias_validez = 30
         else:
-            # Evento no reconocido o no procesable (responde 200 para no reintentar en bucle)
+            # Evento no reconocido (responde 200 para no bloqueantes)
             self._send_response({"status": "ignored", "event_type": event_type}, 200)
             return
 
