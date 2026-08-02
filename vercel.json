@@ -6,6 +6,10 @@
       "destination": "/api/trial.py"
     },
     {
+      "source": "/api/webhook",
+      "destination": "/api/webhook.py"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
