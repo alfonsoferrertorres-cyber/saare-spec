@@ -39,9 +39,13 @@ TIER_MODULES_MAP = {
 
 class handler(BaseHTTPRequestHandler):
 
+    def do_GET(self):
+        """Endpoint de salud/verificación para Vercel o pruebas de estado."""
+        self._send_response({"status": "active", "service": "S.A.A.R.E. Webhook Engine"}, 200)
+
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
-        payload_body = self.rfile.read(content_length)
+        payload_body = self.rfile.read(content_length) if content_length > 0 else b""
         sig_header = self.headers.get('Stripe-Signature', '')
 
         # 1. Verificar firma de seguridad de Stripe
@@ -57,27 +61,38 @@ class handler(BaseHTTPRequestHandler):
             return
 
         # 2. Procesar el evento de pago completado
-        if event.get('type') == 'checkout.session.completed':
+        event_type = event.get('type') if isinstance(event, dict) else getattr(event, 'type', None)
+
+        if event_type == 'checkout.session.completed':
             session = event['data']['object']
             
-            customer_email = session.get('customer_details', {}).get('email') or session.get('customer_email')
-            customer_name = session.get('customer_details', {}).get('name', 'Empresa Cliente')
-            amount_total = session.get('amount_total', 0) / 100  # Convertir de céntimos a Euros
+            # Navegación segura contra valores None
+            customer_details = session.get('customer_details') or {}
+            customer_email = customer_details.get('email') or session.get('customer_email') or ""
+            customer_name = customer_details.get('name') or 'Empresa Cliente'
+            amount_total = (session.get('amount_total') or 0) / 100.0  # Convertir céntimos a Euros
 
-            # Determinar el Tier según el importe cobrado
+            # Determinar el Tier y validez según el importe cobrado
             if amount_total >= 400:
                 tier = "ENTERPRISE_PLATFORM"
-                dias_validez = 30
+                dias_validez = 365  # 1 Año para nivel Enterprise
             else:
                 tier = "AUDITOR_SUITE"
-                dias_validez = 30
+                dias_validez = 30   # 30 días para nivel Auditor
 
             # 3. Generar la Licencia Ed25519
-            lic_bytes, filename = self._generar_licencia(customer_email, customer_name, tier, dias_validez)
+            try:
+                lic_bytes, filename = self._generar_licencia(customer_email, customer_name, tier, dias_validez)
+            except Exception as e:
+                self._send_response({"error": f"Error al generar licencia: {str(e)}"}, 500)
+                return
 
             # 4. Enviar Correo con la licencia adjunta
-            if SMTP_PASS:
-                self._enviar_email_licencia(customer_email, customer_name, tier, lic_bytes, filename)
+            if SMTP_PASS and customer_email:
+                try:
+                    self._enviar_email_licencia(customer_email, customer_name, tier, lic_bytes, filename)
+                except Exception as e:
+                    print(f"⚠️ Error en envío de correo SMTP a {customer_email}: {str(e)}")
 
         self._send_response({"status": "success"}, 200)
 
@@ -141,8 +156,8 @@ https://saare.es/
         part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
         msg.attach(part)
 
-        # Envío vía SMTP
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        # Envío vía SMTP con Timeout prudencial para Vercel
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
         server.starttls()
         server.login(SMTP_USER, SMTP_PASS)
         server.send_message(msg)
