@@ -24,7 +24,7 @@ PRIVATE_KEY_HEX = os.environ.get("SAARE_PRIVATE_KEY", "83367892821e25d770f1fba0c
 # Credenciales SMTP para envío del email corporativo
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.ionos.es")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
-SMTP_USER = os.environ.get("SMTP_USER", "licencias@saare.es")
+SMTP_USER = os.environ.get("SMTP_USER", "legal@saare.es")
 SMTP_PASS = os.environ.get("SMTP_PASS", "")
 
 # Mapeo de precios de Stripe a Módulos S.A.A.R.E.
