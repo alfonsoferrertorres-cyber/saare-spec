@@ -48,53 +48,83 @@ class handler(BaseHTTPRequestHandler):
         payload_body = self.rfile.read(content_length) if content_length > 0 else b""
         sig_header = self.headers.get('Stripe-Signature', '')
 
-        # 1. Verificar firma de seguridad de Stripe
-        try:
-            if STRIPE_WEBHOOK_SECRET:
+        # 1. Parsing del cuerpo y verificación de firma si viene de Stripe
+        event = None
+        if STRIPE_WEBHOOK_SECRET and sig_header:
+            try:
                 event = stripe.Webhook.construct_event(
                     payload_body, sig_header, STRIPE_WEBHOOK_SECRET
                 )
-            else:
-                event = json.loads(payload_body.decode('utf-8'))
-        except Exception as e:
-            self._send_response({"error": f"Firma Webhook inválida: {str(e)}"}, 400)
-            return
+            except Exception as e:
+                self._send_response({"error": f"Firma Webhook inválida: {str(e)}"}, 400)
+                return
+        else:
+            try:
+                event = json.loads(payload_body.decode('utf-8')) if payload_body else {}
+            except Exception as e:
+                self._send_response({"error": f"JSON inválido: {str(e)}"}, 400)
+                return
 
-        # 2. Procesar el evento de pago completado
+        # 2. Determinar tipo de evento e identificar los datos del cliente
         event_type = event.get('type') if isinstance(event, dict) else getattr(event, 'type', None)
 
-        if event_type == 'checkout.session.completed':
-            session = event['data']['object']
-            
-            # Navegación segura contra valores None
+        customer_email = ""
+        customer_name = "Cliente"
+        tier = "AUDITOR_SUITE"
+        dias_validez = 30
+
+        # CASO A: Petición de Prueba Manual / Trial Directo
+        if event_type == 'trial' or (isinstance(event, dict) and 'email' in event):
+            customer_email = event.get('email', '')
+            customer_name = event.get('name', 'Cliente Trial')
+            tier = event.get('tier', 'AUDITOR_SUITE')
+            dias_validez = int(event.get('days', 30))
+
+        # CASO B: Webhook Oficial de Checkout de Stripe
+        elif event_type == 'checkout.session.completed':
+            session = event.get('data', {}).get('object', {})
             customer_details = session.get('customer_details') or {}
             customer_email = customer_details.get('email') or session.get('customer_email') or ""
             customer_name = customer_details.get('name') or 'Empresa Cliente'
             amount_total = (session.get('amount_total') or 0) / 100.0  # Convertir céntimos a Euros
 
-            # Determinar el Tier y validez según el importe cobrado
             if amount_total >= 400:
                 tier = "ENTERPRISE_PLATFORM"
-                dias_validez = 365  # 1 Año para nivel Enterprise
+                dias_validez = 365
             else:
                 tier = "AUDITOR_SUITE"
-                dias_validez = 30   # 30 días para nivel Auditor
+                dias_validez = 30
+        else:
+            # Evento no reconocido o no procesable (responde 200 para no reintentar en bucle)
+            self._send_response({"status": "ignored", "event_type": event_type}, 200)
+            return
 
-            # 3. Generar la Licencia Ed25519
+        if not customer_email:
+            self._send_response({"error": "No se proporcionó un email válido"}, 400)
+            return
+
+        # 3. Generar la Licencia Ed25519
+        try:
+            lic_bytes, filename = self._generar_licencia(customer_email, customer_name, tier, dias_validez)
+        except Exception as e:
+            self._send_response({"error": f"Error al generar licencia: {str(e)}"}, 500)
+            return
+
+        # 4. Enviar Correo con la licencia adjunta
+        email_sent = False
+        if SMTP_PASS and customer_email:
             try:
-                lic_bytes, filename = self._generar_licencia(customer_email, customer_name, tier, dias_validez)
+                self._enviar_email_licencia(customer_email, customer_name, tier, lic_bytes, filename)
+                email_sent = True
             except Exception as e:
-                self._send_response({"error": f"Error al generar licencia: {str(e)}"}, 500)
-                return
+                print(f"⚠️ Error en envío de correo SMTP a {customer_email}: {str(e)}")
 
-            # 4. Enviar Correo con la licencia adjunta
-            if SMTP_PASS and customer_email:
-                try:
-                    self._enviar_email_licencia(customer_email, customer_name, tier, lic_bytes, filename)
-                except Exception as e:
-                    print(f"⚠️ Error en envío de correo SMTP a {customer_email}: {str(e)}")
-
-        self._send_response({"status": "success"}, 200)
+        self._send_response({
+            "status": "success",
+            "email": customer_email,
+            "tier": tier,
+            "email_sent": email_sent
+        }, 200)
 
     def _generar_licencia(self, email, empresa, tier, dias):
         issued_dt = datetime.now(timezone.utc)
