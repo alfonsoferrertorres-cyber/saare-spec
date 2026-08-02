@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+# ==============================================================================
+# S.A.A.R.E. v7.0 PRO - Emisor Criptográfico Serverless para Vercel API (/api/trial)
+# ISO 42001 & EU AI Act Hardened Licensing System
+# ==============================================================================
+
 import json
 import base64
 import os
@@ -5,19 +11,45 @@ from http.server import BaseHTTPRequestHandler
 from datetime import datetime, timedelta, timezone
 from nacl.signing import SigningKey
 
-# Clave privada maestra Ed25519 de SAARE (Cargada desde Variable de Entorno o Fallback Oficial)
-DEFAULT_PRIVATE_KEY_HEX = "b3986ec67e58a25c11bc32c1c38096f9cf5c6eeebf35e9aaae65f49437ee9df8"
+# CLAVE PRIVADA ED25519 OFICIAL (Sincronizada con generar_licencias.py local)
+DEFAULT_PRIVATE_KEY_HEX = "83367892821e25d770f1fba0c47c11ff4b813e54162ece9eb839e076231ab600"
 PRIVATE_KEY_HEX = os.environ.get("SAARE_PRIVATE_KEY", DEFAULT_PRIVATE_KEY_HEX)
 
-PAQUETE_TRIAL = {
-    "dias": 7,
-    "tier": "SAARE_TRIAL_7D",
-    "modules": ["ACTIVE_SHIELD", "AUDITOR_SUITE", "SAARE_GOVERN", "SAARE_ASSURE"]
+# Mapeo Oficial de Módulos Activos
+TIER_MODULES_MAP = {
+    "SAARE_DISCOVERY": [
+        "SAARE_DISCOVER",
+        "SAARE_GOVERN",
+        "ACTIVE_SHIELD",
+        "SAARE_ASSURE",
+        "AUDITOR_SUITE"
+    ],
+    "AUDITOR_SUITE": [
+        "SAARE_DISCOVER",
+        "SAARE_GOVERN",
+        "SAARE_ASSURE",
+        "AUDITOR_SUITE"
+    ],
+    "ENTERPRISE_PLATFORM": [
+        "SAARE_DISCOVER",
+        "SAARE_GOVERN",
+        "ACTIVE_SHIELD",
+        "SAARE_ASSURE",
+        "AUDITOR_SUITE"
+    ],
+    "PLATFORM_OEM": [
+        "SAARE_DISCOVER",
+        "SAARE_GOVERN",
+        "ACTIVE_SHIELD",
+        "SAARE_ASSURE",
+        "AUDITOR_SUITE",
+        "OEM_MULTI_TENANT"
+    ]
 }
 
 class handler(BaseHTTPRequestHandler):
 
-    # 1. Manejo de Preflight CORS (Necesario para peticiones Cross-Origin desde saare.es)
+    # Preflight CORS para llamadas desde saare.es
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -25,7 +57,6 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.end_headers()
 
-    # 2. Generación y firma criptográfica Ed25519 de saare.lic
     def do_POST(self):
         try:
             content_length = int(self.headers.get('Content-Length', 0))
@@ -48,37 +79,37 @@ class handler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Email y Empresa son requeridos"}, 400)
                 return
 
-            now = datetime.now(timezone.utc)
-            exp_date = now + timedelta(days=PAQUETE_TRIAL["dias"])
+            tier = "SAARE_DISCOVERY"
+            dias = 7
+            modules = TIER_MODULES_MAP[tier]
 
-            # Estructura del Payload homológada con la suite ejecutables
+            issued_dt = datetime.now(timezone.utc)
+            expires_dt = issued_dt + timedelta(days=dias)
+            
+            issued_at = issued_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            expires_at = expires_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
             payload = {
                 "client_id": empresa,
                 "email": email,
-                "expires_at": exp_date.strftime("%Y-%m-%dT23:59:59Z"),
-                "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "modules": PAQUETE_TRIAL["modules"],
-                "tier": PAQUETE_TRIAL["tier"],
-                "type": PAQUETE_TRIAL["tier"]
+                "tier": tier,
+                "modules": modules,
+                "expires_at": expires_at,
+                "issued_at": issued_at
             }
 
-            # Validación de la Semilla Hexadecimal Ed25519 (32 Bytes)
-            key_bytes = bytes.fromhex(PRIVATE_KEY_HEX)
-            if len(key_bytes) != 32:
-                raise ValueError("La clave privada Ed25519 debe ser exactamente de 32 bytes (64 caracteres hex).")
-
-            # Firma canónica determinista (sin espacios y con claves ordenadas alfabéticamente)
-            signing_key = SigningKey(key_bytes)
-            canonical_payload = json.dumps(payload, separators=(',', ':'), sort_keys=True).encode("utf-8")
+            # Firma canónica Ed25519
+            signing_key = SigningKey(bytes.fromhex(PRIVATE_KEY_HEX))
+            canonical_payload = json.dumps(payload, separators=(',', ':'), sort_keys=True).encode('utf-8')
             signed = signing_key.sign(canonical_payload)
-            signature_b64 = base64.b64encode(signed.signature).decode("utf-8")
+            sig_b64 = base64.b64encode(signed.signature).decode('utf-8')
 
-            lic_data = {
+            lic_structure = {
                 "payload": payload,
-                "signature": signature_b64
+                "signature": sig_b64
             }
 
-            self._send_json(lic_data, 200)
+            self._send_json(lic_structure, 200)
 
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
@@ -90,4 +121,4 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode('utf-8'))
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
