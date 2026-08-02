@@ -1,58 +1,110 @@
 <script>
+    /* ==========================================================================
+       1. FUNCIONES INTERACTIVAS Y DE NAVEGACIÓN (UI & DASHBOARD)
+       ========================================================================== */
     function toggleIframeSize() {
         const iframe = document.getElementById('grc-iframe');
-        iframe.style.height = (iframe.style.height === '920px') ? '680px' : '920px';
+        if (iframe) {
+            iframe.style.height = (iframe.style.height === '920px') ? '680px' : '920px';
+        }
     }
 
     function copyToClipboard(text, message) {
         navigator.clipboard.writeText(text).then(() => {
             const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.classList.add('show');
-            setTimeout(() => { toast.classList.remove('show'); }, 2500);
+            if (toast) {
+                toast.textContent = message;
+                toast.classList.add('show');
+                setTimeout(() => { toast.classList.remove('show'); }, 2500);
+            }
+        }).catch(err => {
+            console.error("Error al copiar al portapapeles:", err);
         });
     }
 
-    function openLightbox() { document.getElementById('lightbox').classList.add('active'); }
-    function closeLightbox() { document.getElementById('lightbox').classList.remove('active'); }
+    function openLightbox() { 
+        const lb = document.getElementById('lightbox');
+        if (lb) lb.classList.add('active'); 
+    }
+    
+    function closeLightbox() { 
+        const lb = document.getElementById('lightbox');
+        if (lb) lb.classList.remove('active'); 
+    }
 
-    /* LÓGICA DE ALTA AUTOMÁTICA Y DESCARGA DE PAQUETE ZIP (7 DÍAS) */
+    function openLegalModal(tab) {
+        const modal = document.getElementById('legal-modal');
+        if (modal) {
+            modal.classList.add('active');
+            showLegalTab(tab);
+        }
+    }
+    
+    function closeLegalModal() { 
+        const modal = document.getElementById('legal-modal');
+        if (modal) modal.classList.remove('active'); 
+    }
+
+    function showLegalTab(tab) {
+        document.querySelectorAll('.legal-sec').forEach(e => e.style.display = 'none');
+        document.querySelectorAll('.legal-tab-btn').forEach(e => e.classList.remove('active'));
+        
+        const targetSec = document.getElementById('legal-sec-' + tab);
+        const targetBtn = document.getElementById('tab-btn-' + tab);
+        
+        if (targetSec) targetSec.style.display = 'block';
+        if (targetBtn) targetBtn.classList.add('active');
+    }
+
+    /* ==========================================================================
+       2. MOTOR DE EMISIÓN DE LICENCIAS (3-PLANE ARCHITECTURE DISCOVERY ENGINE)
+       ========================================================================== */
     async function solicitarTrialAutomatico(event) {
         event.preventDefault();
         
-        const empresa = document.getElementById('trial-org').value.trim();
-        const email = document.getElementById('trial-email').value.trim();
+        const empresaInput = document.getElementById('trial-org');
+        const emailInput = document.getElementById('trial-email');
         const btn = document.getElementById('btn-trial-submit');
 
+        const empresa = empresaInput ? empresaInput.value.trim() : '';
+        const email = emailInput ? emailInput.value.trim() : '';
+
         if (!empresa || !email) {
-            alert("⚠️ Por favor, introduce el nombre de tu Empresa y un Email corporativo válido.");
+            alert("⚠️ Por favor, introduce el nombre de tu Organización y un Email corporativo válido.");
             return;
         }
 
-        btn.innerText = "⏳ Generando Paquete ZIP...";
-        btn.disabled = true;
+        if (btn) {
+            btn.innerText = "⏳ Generando Criptografía Ed25519 & Nodo Discovery...";
+            btn.disabled = true;
+        }
 
-        // URL Oficial de la API Serverless en Vercel
         const VERCEL_API_URL = 'https://saare-v7-iso42001-sable.vercel.app/api/trial';
 
         try {
             const response = await fetch(VERCEL_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, empresa })
+                body: JSON.stringify({ 
+                    email: email, 
+                    empresa: empresa,
+                    plane: 'DATA_PLANE_SANDBOX',
+                    duration_days: 7,
+                    modules: ['MS3V_RAM_ENGINE', 'ED25519_LEDGER', 'PEP_L7_INTERCEPTOR']
+                })
             });
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Error del servidor (${response.status})`);
+                throw new Error(errorData.error || `Error del servidor de licencias (${response.status})`);
             }
 
-            // Recibir paquete ZIP binario desde Vercel
+            // Recibir paquete ZIP binario con clave saare.lic
             const zipBlob = await response.blob();
             const safeCompanyName = empresa.replace(/[^a-zA-Z0-9_-]/g, '_');
-            const fileName = `SAARE_v7.0_PRO_${safeCompanyName}.zip`;
+            const fileName = `SAARE_v7.0_Discovery_Node_${safeCompanyName}.zip`;
 
-            // Forzar descarga automática del paquete ZIP en el navegador
+            // Iniciar descarga automática
             const url = window.URL.createObjectURL(zipBlob);
             const a = document.createElement('a');
             a.href = url;
@@ -62,14 +114,31 @@
             a.remove();
             window.URL.revokeObjectURL(url);
 
-            alert("✅ ¡Paquete S.A.A.R.E. v7.0 PRO generado con éxito!\n\nDescomprime el archivo ZIP descargado para ejecutar la instalación y activar tu evaluación de 7 días.");
+            copyToClipboard(
+                `Nodo Discovery emitido para ${empresa}.`,
+                "Paquete S.A.A.R.E. Discovery descargado correctamente."
+            );
+
+            alert("✅ ¡Nodo S.A.A.R.E. Discovery generado con éxito!\n\nSe ha descargado el paquete que contiene el Data Plane RAM-Only (~1.16ms) y la firma 'saare.lic' determinista para 7 días de evaluación.");
 
         } catch (err) {
-            console.error("❌ Error en la emisión:", err);
-            alert("❌ No se pudo generar la licencia de evaluación: " + err.message);
+            console.warn("⚠️ API Serverless no disponible, activando descarga directa de reserva:", err);
+            
+            alert("⚠️ Servidor de licencias instantáneas en mantenimiento temporal.\n\nA continuación se descargará el instalador base. Por favor, contacta con soporte@saare.es para activar tu archivo 'saare.lic' vinculado a " + email);
+
+            // Descargar binario ejecutable de respaldo
+            const setupUrl = "https://github.com/alfonsoferrertorres-cyber/protocolo-saare/releases/download/v7.0.0/Setup_SAARE_v7.0_PRO.exe";
+            const aExe = document.createElement('a');
+            aExe.href = setupUrl;
+            aExe.download = "Setup_SAARE_v7.0_PRO.exe";
+            document.body.appendChild(aExe);
+            aExe.click();
+            aExe.remove();
         } finally {
-            btn.innerText = "⚡ Obtener Licencia de 7 Días →";
-            btn.disabled = false;
+            if (btn) {
+                btn.innerText = "⚡ Generar Licencia de Evaluación →";
+                btn.disabled = false;
+            }
         }
     }
 </script>
