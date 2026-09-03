@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAARE v7 PRO - Estándar de Soberanía y Gobernanza IA</title>
-    <meta name="author" content="Alfonso Ferrer Torres (NIF: 48553065L)">
+    <meta name="author" content="MS3V Architecture Standard">
     <meta name="description" content="Arquitectura de control perimetral, procesamiento volátil y desacople en Capa 7.">
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; background: #f9f9f9; }
@@ -32,9 +32,9 @@
         <p><strong>Soberanía de Datos, Ciberseguridad y Desacople en Capa 7</strong></p>
         
         <div class="meta">
-            Autor: Alfonso Ferrer Torres (NIF: 48553065L)<br>
-            Entidad: Gabinete Técnico Comercial MS3V<br>
-            Identificador Técnico: MS3V-RECON-VALID-2026
+            Estándar Arquitectónico: MS3V-RECON-VALID-2026<br>
+            Sello de Autoría Protegida: Safe Creative Hash Registry (HAAH)<br>
+            Licenciamiento: Ed25519 Cryptographically Verified Engine
         </div>
 
         <h2>Pilares Arquitectónicos</h2>
@@ -134,27 +134,26 @@
                     throw new Error(errorData.error || `Error del servidor de licencias (${response.status})`);
                 }
 
-                // Recibir paquete ZIP binario con clave saare.lic
-                const zipBlob = await response.blob();
-                const safeCompanyName = empresa.replace(/[^a-zA-Z0-9_-]/g, '_');
-                const fileName = `SAARE_v7.0_Discovery_Node_${safeCompanyName}.zip`;
-
-                // Iniciar descarga automática
-                const url = window.URL.createObjectURL(zipBlob);
+                // Recibir el JSON firmado directamente de la API como saare.lic
+                const licJson = await response.json();
+                const licString = JSON.stringify(licJson, null, 2);
+                const blob = new Blob([licString], { type: 'application/json' });
+                
+                const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = fileName;
+                a.download = "saare.lic";
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
                 window.URL.revokeObjectURL(url);
 
                 copyToClipboard(
-                    `Nodo Discovery emitido para ${empresa}.`,
-                    "Paquete S.A.A.R.E. Discovery descargado correctamente."
+                    `Licencia saare.lic emitida para ${empresa}.`,
+                    "Archivo de licencia saare.lic descargado correctamente."
                 );
 
-                alert("✅ ¡Nodo S.A.A.R.E. Discovery generado con éxito!\n\nSe ha descargado el paquete que contiene el Data Plane RAM-Only (~1.16ms) y la firma 'saare.lic' determinista para 7 días de evaluación.");
+                alert("✅ ¡Licencia 'saare.lic' generada con éxito!\n\nSe ha descargado el archivo firmado criptográficamente con validez de 7 días para tu nodo de evaluación.");
 
             } catch (err) {
                 console.warn("⚠️ API Serverless no disponible, activando descarga directa de reserva:", err);
